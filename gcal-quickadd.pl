@@ -3,7 +3,7 @@ use strict;
 use 5.008_001;
 
 package GCal::QuickAdd;
-use Net::Google::Calendar;
+use Net::Google::Calendar 0.97;
 use Any::Moose;
 use YAML;
 
@@ -44,16 +44,10 @@ sub post_event {
     my($text) = @_;
 
     my $entry = Net::Google::Calendar::Entry->new;
-    $entry->set_attr('xmlns:gCal' => 'http://schemas.google.com/gCal/2005');
     $entry->content($text);
-    $entry->set( XML::Atom::Namespace->new(gCal => 'http://schemas.google.com/gCal/2005'),
-                 quickadd => '', { value => 'true' } );
+    $entry->quick_add(1);
 
-    open my $null, ">/dev/null";
-    select $null; # Net::Google::Calendar (0.95) prints extra stuff to STDOUT. Shut it off.
     my $res = $self->gcal->add_entry($entry) or die $@;
-    select STDOUT;
-
     printf "Event '%s' created at %s.\n", $res->title, ($res->when)[0]->set_time_zone('local');
 }
 
@@ -63,7 +57,7 @@ sub init_authentication {
     if (my $config = eval { YAML::LoadFile($self->configfile) }) {
         $self->config($config);
         $self->gcal->auth($self->config->{username}, $self->config->{token});
-        $self->gcal->{_auth}->{_auth_type} = Net::Google::AuthSub::CLIENT_LOGIN; # UGH
+        $self->gcal->auth_object->auth_type(Net::Google::AuthSub::CLIENT_LOGIN);
         return 1;
     }
 
@@ -78,8 +72,8 @@ sub init_authentication {
 
     $self->gcal->login($username, $password);
 
-    if ($self->gcal->{_auth}->authorised) {
-        $self->config({ username => $username, token => $self->gcal->{_auth}->{_auth} });
+    if ($self->gcal->auth_object->authorised) {
+        $self->config({ username => $username, token => $self->gcal->auth_object->auth_token });
         YAML::DumpFile($self->configfile, $self->config);
     } else {
         die "Google AuthSub authentication failed.\n";
